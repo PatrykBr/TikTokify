@@ -20,14 +20,14 @@ def crop_video(input_path, duration):
     num_loops = math.ceil(duration / clip.duration)
     looped_clip = mpy.concatenate_videoclips([clip] * num_loops)
     cropped_clip = crop(looped_clip, width=h * 0.5, height=h, x_center=w / 2, y_center=h / 2)
-    return cropped_clip
+    return cropped_clip.set_audio(None)
 
 def composite_video(clip1, clip2_path, length):
     clip2 = mpy.VideoFileClip(clip2_path)
     clip1_width = clip1.size[0]
     clip1_height = clip1.size[1]
     clip = clip1.subclip(0, length)
-    clip2_resized = clip2.resize((clip1_width, clip1_width*0.5)).set_position((0,clip1_height/5))
+    clip2_resized = clip2.resize((clip1_width, clip1_width*0.6)).set_position((0,clip1_height/5))
     return mpy.CompositeVideoClip([clip, clip2_resized])
 
 def sanitize_filename(filename):
@@ -43,25 +43,33 @@ def split_video_into_parts(final_clip, duration_limit, video_title, output_dir):
         filename = sanitize_filename(filename)
         output_path = os.path.join(output_dir, filename)
         temp_video_path = os.path.join(TMP_PATH, f"{filename}_TEMP.m4a")
-        part_clip.write_videofile(output_path, codec="libx264", audio_codec="aac", remove_temp=True, temp_audiofile=temp_video_path)
+        part_clip.write_videofile(output_path, codec="libx264", audio_codec="aac", remove_temp=True, temp_audiofile=temp_video_path, verbose=False)
+        print(f"Splitting process: {i+1}/{num_parts}")
+
 
 def process_video(video, stock_video):
-    #for video, stock_video in zip(video, stock_video):
-        stock_video_path = os.path.join(STOCK_VIDEO_PATH, stock_video)
-        yt_video = download_youtube_video(video['videoId'])
-        clip1 = crop_video(stock_video_path, yt_video.length)
-        highest_res_url = yt_video.streams.get_highest_resolution().url
-        final_clip = composite_video(clip1, highest_res_url, yt_video.length)
-        video_title = sanitize_filename(yt_video.title.replace(' ', '_'))
-        split_video_into_parts(final_clip, 30, video_title, FINAL_VIDEO_OUTPUT_PATH)
+    stock_video_path = os.path.join(STOCK_VIDEO_PATH, stock_video)
+    yt_video = download_youtube_video(video['videoId'])
+    clip1 = crop_video(stock_video_path, yt_video.length)
+    highest_res_url = yt_video.streams.get_highest_resolution().url
+    final_clip = composite_video(clip1, highest_res_url, yt_video.length)
+    video_title = sanitize_filename(yt_video.title.replace(' ', '_'))
+    split_video_into_parts(final_clip, 30, video_title, FINAL_VIDEO_OUTPUT_PATH)
 
 def main():
-    videos = scrapetube.get_channel("UC2Z8pGdkGK4Xgbx1yaK5ndA", limit=2, sort_by='newest')
-    stock_videos = [file for file in os.listdir(STOCK_VIDEO_PATH) if file.endswith('.mp4')]
-    #process_video(videos, stock_videos)
+    youtube_input = input("Enter a YouTube channel ID or a YouTube video ID: ")
+    if youtube_input.startswith("UC"):
+        # YouTube channel ID entered
+        videos = scrapetube.get_channel(youtube_input, limit=1, sort_by='newest')
+        stock_videos = [file for file in os.listdir(STOCK_VIDEO_PATH) if file.endswith('.mp4')]
 
-    with Pool() as p:
-        p.starmap(process_video, zip(videos, stock_videos))
+        with Pool() as p:
+            p.starmap(process_video, zip(videos, stock_videos))
+    else:
+        # YouTube video ID entered
+        stock_videos = [file for file in os.listdir(STOCK_VIDEO_PATH) if file.endswith('.mp4')]
+        video_id = youtube_input
+        process_video({'videoId': video_id}, stock_videos[0])
 
 if __name__ == "__main__":
     main()
